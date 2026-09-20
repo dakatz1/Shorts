@@ -67,14 +67,39 @@ def cmd_doctor(args) -> int:
               f"Add clips to {config.get('broll.dir')}")
 
     import os
-    for stage, key in (("llm", "ANTHROPIC_API_KEY"), ("tts", "ELEVENLABS_API_KEY"),
-                       ("image", "REPLICATE_API_TOKEN")):
+
+    keys = {
+        "anthropic": "ANTHROPIC_API_KEY",
+        "elevenlabs": "ELEVENLABS_API_KEY",
+        "replicate": "REPLICATE_API_TOKEN",
+        "openai": "OPENAI_API_KEY",
+    }
+    for stage in ("llm", "tts", "image", "video"):
         provider = str(config.get(f"providers.{stage}", "stub"))
-        needs_key = provider in {"anthropic", "elevenlabs", "replicate"}
-        if not needs_key:
+        key = keys.get(provider)
+        if key is None:
             print(f"[OK  ] {stage}: {provider} (no key needed)")
-            continue
-        check(f"{stage}: {provider}", bool(os.environ.get(key)), f"set {key} in .env")
+        else:
+            check(f"{stage}: {provider}", bool(os.environ.get(key)), f"set {key} in .env")
+
+    # "auto" hides which engine you'll actually get, which is the thing you
+    # want to know when the audio turns out to be robotic or absent.
+    if str(config.get("providers.tts")) == "auto":
+        import shutil as _shutil
+
+        if _shutil.which("piper"):
+            engine = "piper (free neural voice)"
+        elif _shutil.which("espeak-ng") or _shutil.which("espeak"):
+            engine = "espeak (free robot voice)"
+        elif _shutil.which("say"):
+            engine = "say (macOS)"
+        else:
+            engine = "NONE — the video will be silent"
+        print(f"[INFO] auto voice resolves to: {engine}")
+
+    if str(config.get("providers.video")) in {"kenburns", "stub", "none"}:
+        print("[INFO] animation: kenburns — zooming stills, not real motion. "
+              "Set providers.video=replicate for generated video.")
 
     print(f"\nmode: {config.get('content.mode')}  layout: {config.get('visual.layout')}  "
           f"upload: {'enabled' if config.get('upload.enabled') else 'disabled'}")

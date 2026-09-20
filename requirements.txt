@@ -2,6 +2,9 @@
 PyYAML>=6.0
 requests>=2.31
 
+# Free offline neural voice (optional — used by provider: auto/piper)
+piper-tts>=1.2
+
 # Script generation (optional — only for provider: anthropic)
 anthropic>=0.40
 

@@ -15,7 +15,12 @@ from .captions import build_ass
 from .config import Config
 from .ideas import IdeaGenerator
 from .models import Idea, RenderResult, Script, VoiceTrack
-from .providers import get_image_provider, get_script_provider, get_voice_provider
+from .providers import (
+    get_image_provider,
+    get_script_provider,
+    get_video_provider,
+    get_voice_provider,
+)
 from .timing import assign_beat_times
 from .util import ensure_dir, ffprobe_duration, log, slugify, stable_seed, write_json
 
@@ -72,6 +77,51 @@ def generate_frames(script: Script, config: Config, workdir: Path, *, reuse: boo
     return paths
 
 
+def animate_beats(
+    script: Script,
+    frames: list[Path],
+    config: Config,
+    workdir: Path,
+    panel: tuple[int, int],
+    *,
+    reuse: bool = True,
+) -> Path:
+    """Turn each beat's still into a moving shot, then join them.
+
+    Generated clips are cached like frames — they are by far the most expensive
+    thing the pipeline buys, and a caption tweak must never re-buy them.
+    """
+    provider = get_video_provider(config)
+    exact = getattr(provider, "exact_duration", False)
+    segments_dir = ensure_dir(workdir / "segments")
+    clips_dir = ensure_dir(workdir / "clips")
+
+    segments: list[Path] = []
+    for index, (beat, frame) in enumerate(zip(script.beats, frames)):
+        segment = segments_dir / f"seg_{index:02d}.mp4"
+        seed = stable_seed(beat.visual, index, script.title)
+
+        if exact:
+            provider.animate(
+                frame, beat.visual, segment, config,
+                duration=beat.duration, motion=beat.motion, seed=seed,
+            )
+        else:
+            clip = clips_dir / f"clip_{index:02d}.mp4"
+            if reuse and clip.exists() and clip.stat().st_size > 0:
+                log.debug("reusing generated clip %s", clip.name)
+            else:
+                log.info("clip %d/%d (%.1fs)", index + 1, len(frames), beat.duration)
+                provider.animate(
+                    frame, beat.visual, clip, config,
+                    duration=beat.duration, motion=beat.motion, seed=seed,
+                )
+            render_lib.fit_clip_to_duration(clip, segment, beat.duration, config, panel)
+        segments.append(segment)
+
+    return render_lib.concat_segments(segments, workdir / "animation.mp4")
+
+
 def _pick_music(config: Config) -> Path | None:
     if not bool(config.get("music.enabled", True)):
         return None
@@ -106,14 +156,7 @@ def produce(
     animation: Path | None = None
     if layout != "broll_only":
         frames = generate_frames(script, config, workdir, reuse=reuse)
-        segments_dir = ensure_dir(workdir / "segments")
-        segments = [
-            render_lib.render_beat_segment(
-                beat, frame, segments_dir / f"seg_{i:02d}.mp4", config, (width, top_h)
-            )
-            for i, (beat, frame) in enumerate(zip(script.beats, frames))
-        ]
-        animation = render_lib.concat_segments(segments, workdir / "animation.mp4")
+        animation = animate_beats(script, frames, config, workdir, (width, top_h), reuse=reuse)
         # The animation is driven by beat timings; trust the audio for total length.
         log.debug("animation %.2fs vs voice %.2fs", ffprobe_duration(animation), voice.duration)
 

@@ -5,6 +5,7 @@ providers:
   llm: anthropic
   tts: elevenlabs
   image: replicate
+  video: replicate      # real animation; costs the most, changes the most
 
 content:
   mode: satire

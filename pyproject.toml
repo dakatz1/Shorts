@@ -13,6 +13,7 @@ dependencies = ["PyYAML>=6.0", "requests>=2.31"]
 
 [project.optional-dependencies]
 llm = ["anthropic>=0.40"]
+voice = ["piper-tts>=1.2"]
 images = ["Pillow>=10.0"]
 upload = [
     "google-api-python-client>=2.100",

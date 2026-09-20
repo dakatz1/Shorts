@@ -71,16 +71,47 @@ silent voice track. Run `Step 2 - Render videos` right now and see the format.
 ### API keys
 
 `Settings -> Secrets and variables -> Actions -> New repository secret`. Add the
-ones you want; each is independent.
+ones you want; each is independent, and each stage falls back on its own.
 
 | Secret | Buys you | Roughly |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | scripts actually written, not templated | ~$0.02 / short |
-| `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID` | a real voiceover with accurate caption timing | ~$0.05 / short |
-| `REPLICATE_API_TOKEN` | real animation frames instead of placeholders | ~$0.04 / frame |
+| `REPLICATE_API_TOKEN` | real imagery, and real animation | see below |
+| `OPENAI_API_KEY` | a good voice, cheap | ~$0.01 / short |
+| `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID` | the best voice, plus exact caption timing | ~$0.05 / short |
 
-All in: **$0.25-0.40 per short.** The render workflow logs which providers it
-picked, so you can see what's live.
+**Speech needs no key at all.** The workflow installs
+[piper](https://github.com/OHF-voice/piper1-gpl) (a free offline neural voice)
+and espeak-ng (a free robot voice) and uses the best one available, so every
+render has audio. A paid key upgrades the voice; ElevenLabs additionally
+returns real word timings, which makes captions land exactly on the beat
+instead of on a syllable estimate.
+
+### Animation: the setting that actually matters
+
+The `animation` dropdown on the render workflow is the difference between a
+slideshow and something that looks made.
+
+- **`kenburns`** (default, free) — pans and zooms across a still image.
+  Nothing in the frame moves, because there is nothing to move. Good for
+  checking timing, captions and pacing without spending anything. It will never
+  look like the reference channels, no matter how good the stills get.
+- **`generated`** — sends each still to an image-to-video model, which returns
+  a few seconds of real motion: the camera travels, dust and cloth drift, the
+  subject shifts. This is the single biggest quality jump available, and it
+  needs `REPLICATE_API_TOKEN`.
+
+Generated video is also the expensive part — **roughly $0.10-0.50 per beat**
+depending on the model, so **$0.50-3.00 per short** on top of everything else.
+Budget accordingly: pitch first, render only the scripts you actually like.
+
+The model slug lives at `providers.video_model` in `config/default.yaml`. This
+field goes stale fast — check Replicate for the current price/quality winner
+before a big run, and change the one line. If a model names its inputs
+differently, add them under `providers.video_input`.
+
+Generated clips are cached per beat, so re-rendering after a caption or timing
+change never re-buys them.
 
 ### Workout footage
 
@@ -225,7 +256,8 @@ Each stage writes into `out/<slug>/`, so a failed run leaves you the pieces:
 | `voice.wav` | the voiceover |
 | `timings.json` | word-level and beat-level timings |
 | `frames/beat_NN.jpg` | one generated still per beat (cached) |
-| `segments/seg_NN.mp4` | each still with its Ken Burns move |
+| `clips/clip_NN.mp4` | the still animated into real motion (cached; `generated` only) |
+| `segments/seg_NN.mp4` | each clip conformed to its beat's exact length |
 | `animation.mp4` | the segments concatenated — the top panel |
 | `broll.mp4` | workout footage cropped to the bottom panel |
 | `captions.ass` | the subtitle file that gets burned in |
@@ -244,6 +276,11 @@ specific problems before giving up.
 **Timing** comes from ElevenLabs' character-level alignment where available, and
 is otherwise estimated by syllable weight with extra time bought by punctuation.
 Beats are tiled so there's never a frozen frame between them.
+
+**Animation** is a provider like any other. Video models emit fixed lengths
+(5s, 6s) that never match a narrated beat, so each clip is conformed: trimmed
+if long, gently retimed if slightly short, and held on its final frame if much
+too short — so the cut always lands on the word it was written for.
 
 **Rendering** is staged rather than one giant filter graph, so when something
 breaks you can play the intermediate file and see which stage did it.
@@ -285,8 +322,11 @@ generation entirely — much cheaper, and useful for testing scripts.
 
 **The bottom panel is abstract noise** — no b-roll. See *Workout footage* above.
 
-**The video is silent** — no `ELEVENLABS_API_KEY`, so the stub voice is being
-used. The timing is still correct.
+**It looks like a slideshow** — that's `animation: kenburns`. Switch the
+dropdown to `generated` and add `REPLICATE_API_TOKEN`.
+
+**The video is silent** — no speech engine was found. In Actions this
+shouldn't happen; locally, `pip install piper-tts` or install espeak-ng.
 
 **Scripts feel templated** — no `ANTHROPIC_API_KEY`, so the offline writer is
 being used. It's structurally right but deliberately not funny.

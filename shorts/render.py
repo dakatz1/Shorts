@@ -96,6 +96,58 @@ def render_beat_segment(
     return out_path
 
 
+# How far a generated clip may be slowed to fill a beat before it looks like
+# slow motion. Past this we hold the final frame instead.
+MAX_SLOWDOWN = 1.6
+
+
+def fit_clip_to_duration(
+    source: Path, out_path: Path, target: float, config: Config, panel: tuple[int, int]
+) -> Path:
+    """Conform a generated clip to the panel and to exactly `target` seconds.
+
+    Video models emit fixed lengths (5s, 6s, 10s) that never match a narrated
+    beat. Too long: trim. Slightly short: retime. Much too short: retime as far
+    as looks acceptable, then hold the last frame so the cut still lands on the
+    word it was written for.
+    """
+    from .util import ffprobe_duration
+
+    width, height = panel
+    fps = int(config.get("visual.fps", 30))
+    target = max(MIN_BEAT_SECONDS, target)
+    source_duration = ffprobe_duration(source)
+
+    chain = (
+        f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+        f"crop={width}:{height},setsar=1"
+    )
+
+    if source_duration > target:
+        speed = 1.0            # trimmed by -t below
+    else:
+        needed = target / max(0.05, source_duration)
+        speed = min(needed, MAX_SLOWDOWN)
+    if abs(speed - 1.0) > 0.01:
+        chain += f",setpts={speed:.4f}*PTS"
+
+    # After retiming, pad with the final frame if we are still short.
+    chain += f",fps={fps},tpad=stop_mode=clone:stop_duration={target:.3f},format=yuv420p"
+
+    ensure_dir(out_path.parent)
+    ffmpeg([
+        "-i", str(source),
+        "-an",
+        "-vf", chain,
+        "-t", f"{target:.3f}",
+        "-r", str(fps),
+        "-c:v", "libx264", "-crf", "18", "-preset", "veryfast",
+        "-pix_fmt", "yuv420p",
+        str(out_path),
+    ])
+    return out_path
+
+
 def concat_segments(segments: list[Path], out_path: Path) -> Path:
     """Stream-copy concat — the segments already share codec and parameters."""
     if not segments:

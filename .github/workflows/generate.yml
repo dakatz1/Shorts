@@ -10,6 +10,7 @@
 #   ANTHROPIC_API_KEY     script writing        (optional, falls back to offline writer)
 #   ELEVENLABS_API_KEY    voiceover             (optional, falls back to silence)
 #   ELEVENLABS_VOICE_ID   which voice
+#   OPENAI_API_KEY        cheaper voice alternative (optional)
 #   REPLICATE_API_TOKEN   animation frames      (optional, falls back to placeholders)
 #   YOUTUBE_TOKEN_JSON    contents of youtube_token.json, from `shorts auth`
 
@@ -24,6 +25,11 @@ on:
       count:
         description: "How many to make when writing fresh scripts"
         default: "3"
+      animation:
+        description: "kenburns = free zooming stills. generated = real AI video (needs REPLICATE_API_TOKEN, costs money)."
+        type: choice
+        options: [kenburns, generated]
+        default: kenburns
       layout:
         description: "Frame layout"
         type: choice
@@ -62,15 +68,26 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Install ffmpeg
+      - name: Install ffmpeg and a fallback speech engine
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg fontconfig fonts-dejavu-core
+          sudo apt-get install -y --no-install-recommends \
+            ffmpeg fontconfig fonts-dejavu-core espeak-ng
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          # Free neural voice. Used automatically when no paid TTS key is set;
+          # falls back to espeak-ng if the voice model can't be fetched.
+          pip install piper-tts
+
+      - name: Cache the piper voice model
+        uses: actions/cache@v4
+        with:
+          path: cache/piper
+          key: piper-${{ hashFiles('config/default.yaml') }}
+          restore-keys: piper-
 
       - name: Cache b-roll
         uses: actions/cache@v4
@@ -86,17 +103,34 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
         run: |
           # Each stage independently falls back to its offline stub, so a
           # partially-configured repo still produces watchable output.
-          LLM=stub;   [ -n "$ANTHROPIC_API_KEY" ]   && LLM=anthropic
-          TTS=stub;   [ -n "$ELEVENLABS_API_KEY" ]  && TTS=elevenlabs
-          IMG=stub;   [ -n "$REPLICATE_API_TOKEN" ] && IMG=replicate
+          LLM=stub;  [ -n "$ANTHROPIC_API_KEY" ]   && LLM=anthropic
+          IMG=stub;  [ -n "$REPLICATE_API_TOKEN" ] && IMG=replicate
+
+          # Voice, best first. "auto" picks piper, then espeak-ng — never silence here.
+          TTS=auto
+          [ -n "$OPENAI_API_KEY" ]     && TTS=openai
+          [ -n "$ELEVENLABS_API_KEY" ] && TTS=elevenlabs
+
+          # Real video generation is opt-in and needs the Replicate token.
+          VID=kenburns
+          if [ "${{ inputs.animation }}" = "generated" ]; then
+            if [ -n "$REPLICATE_API_TOKEN" ]; then
+              VID=replicate
+            else
+              echo "::warning::animation=generated needs REPLICATE_API_TOKEN. Falling back to kenburns."
+            fi
+          fi
+
           echo "llm=$LLM" >> "$GITHUB_OUTPUT"
           echo "tts=$TTS" >> "$GITHUB_OUTPUT"
           echo "image=$IMG" >> "$GITHUB_OUTPUT"
-          echo "Providers — script:$LLM voice:$TTS image:$IMG"
+          echo "video=$VID" >> "$GITHUB_OUTPUT"
+          echo "Providers — script:$LLM voice:$TTS image:$IMG video:$VID"
 
       - name: Environment check
         run: python -m shorts doctor
@@ -106,12 +140,14 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
         run: |
           COMMON=(
             --set providers.llm=${{ steps.providers.outputs.llm }}
             --set providers.tts=${{ steps.providers.outputs.tts }}
             --set providers.image=${{ steps.providers.outputs.image }}
+            --set providers.video=${{ steps.providers.outputs.video }}
             --set visual.layout=${{ inputs.layout }}
           )
           if [ -n "${{ inputs.scripts }}" ]; then

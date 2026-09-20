@@ -33,3 +33,25 @@ class ImageProvider(Protocol):
     """Turns a visual prompt into a still frame on disk."""
 
     def render(self, prompt: str, out_path: Path, config: Config, *, seed: int = 0) -> Path: ...
+
+
+@runtime_checkable
+class VideoProvider(Protocol):
+    """Turns a still frame into a moving shot.
+
+    This is the stage that decides whether the result looks animated or like a
+    slideshow. A Ken Burns zoom is a VideoProvider too — it just moves the
+    camera over a static image instead of moving anything in the scene.
+    """
+
+    def animate(
+        self,
+        image: Path,
+        prompt: str,
+        out_path: Path,
+        config: Config,
+        *,
+        duration: float,
+        motion: str = "push_in",
+        seed: int = 0,
+    ) -> Path: ...

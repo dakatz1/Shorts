@@ -8,8 +8,28 @@
 # are what `make demo` uses, so you can render a real mp4 before paying anyone.
 providers:
   llm: stub            # stub | anthropic
-  tts: stub            # stub | elevenlabs | say (macOS) | espeak
   image: stub          # stub | replicate | openai
+
+  # auto  -> best free voice present: piper (neural) > espeak (robot) > silence
+  # Paid: openai (cheap, good) | elevenlabs (best, real caption timing)
+  tts: auto
+
+  # How a still becomes a moving shot.
+  #   kenburns  -> pan and zoom over the still. Free, but it is a slideshow:
+  #                nothing in the frame actually moves.
+  #   replicate -> real image-to-video. This is what makes it look animated,
+  #                and it is the single biggest quality jump available.
+  video: kenburns
+
+  # Image-to-video model slug. This field moves fast — check Replicate for the
+  # current best price/quality before committing to a run. Candidates have
+  # included wan-video/wan-2.2-i2v-fast, kwaivgi/kling-v2.1,
+  # minimax/video-01 and bytedance/seedance-1-pro.
+  video_model: wan-video/wan-2.2-i2v-fast
+  video_resolution: 480p      # 480p is much cheaper and fine at Shorts size
+  video_durations: [5]        # lengths this model can emit; nearest is requested
+  # Extra model-specific inputs, if your chosen slug names things differently.
+  video_input: {}
 
 content:
   # satire  -> absurd claims + a visible disclaimer + comedic framing (default)
@@ -34,6 +54,13 @@ voice:
   # Delivery direction handed to the TTS provider and baked into the script prompt.
   style: "urgent, conspiratorial documentary narrator"
   speed: 1.08
+  # piper (free neural voice)
+  piper_voice: en_US-lessac-medium
+  piper_dir: cache/piper
+  sentence_silence: 0.35
+  # openai
+  openai_model: gpt-4o-mini-tts
+  openai_voice: onyx
   # elevenlabs-specific
   model_id: eleven_multilingual_v2
   stability: 0.4
