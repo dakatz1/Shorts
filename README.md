@@ -20,7 +20,7 @@ Three taps, in order. Everything happens under the **Actions** tab.
 
 ### 1. Pitch — write scripts, render nothing
 
-Run **`1. Pitch scripts`**. Pick how many and how unhinged (1-5).
+Run **`Step 1 - Pitch scripts`**. Pick how many and how unhinged (1-5).
 
 It writes the scripts, commits them to `pitches/<run number>/`, and opens an
 **issue** containing every script in full. That issue is the thing you read on
@@ -32,7 +32,7 @@ Scripts cost cents. Rendering costs real money and quota. So read first.
 ### 2. Render — turn the good ones into videos
 
 Delete the pitches you don't want (tap the file on github.com, the bin icon,
-commit). Then run **`2. Render videos`** with:
+commit). Then run **`Step 2 - Render videos`** with:
 
 ```
 scripts: pitches/7
@@ -66,7 +66,7 @@ Once you trust it, uncomment the `schedule:` block in
 
 The workflows run today. Every stage falls back to an offline stub when its API
 key is missing, so you get a real, watchable mp4 with placeholder visuals and a
-silent voice track. Run `2. Render videos` right now and see the format.
+silent voice track. Run `Step 2 - Render videos` right now and see the format.
 
 ### API keys
 

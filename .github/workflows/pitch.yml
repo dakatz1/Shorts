@@ -4,7 +4,7 @@
 # you spend anything. The pitches are committed to the repo and also posted as
 # an issue, which is the part you actually read on a phone.
 
-name: 1. Pitch scripts
+name: Step 1 - Pitch scripts
 
 on:
   workflow_dispatch:
@@ -84,7 +84,7 @@ jobs:
               '\n---\n',
               '### To render these',
               '',
-              'Run the **2. Render videos** workflow with:',
+              'Run the **Step 2 - Render videos** workflow with:',
               '',
               '```',
               `scripts: ${dir}`,

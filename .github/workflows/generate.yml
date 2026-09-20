@@ -13,7 +13,7 @@
 #   REPLICATE_API_TOKEN   animation frames      (optional, falls back to placeholders)
 #   YOUTUBE_TOKEN_JSON    contents of youtube_token.json, from `shorts auth`
 
-name: 2. Render videos
+name: Step 2 - Render videos
 
 on:
   workflow_dispatch:
