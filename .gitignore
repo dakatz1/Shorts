@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Secrets — never commit these
+.env
+*.client_secret.json
+client_secret*.json
+token*.json
+youtube_token.json
+
+# Generated media & scratch
+out/
+cache/
+assets/broll/*
+!assets/broll/README.md
+!assets/broll/.gitkeep
+assets/music/*
+!assets/music/README.md
+!assets/music/.gitkeep
+assets/fonts/*.ttf
+assets/fonts/*.otf
+
+# OS
+.DS_Store

@@ -1,0 +1,14 @@
+# Core (required)
+PyYAML>=6.0
+requests>=2.31
+
+# Script generation (optional — only for provider: anthropic)
+anthropic>=0.40
+
+# Thumbnail / image compositing (optional — only for provider: stub images)
+Pillow>=10.0
+
+# YouTube upload (optional — only for `shorts upload`)
+google-api-python-client>=2.100
+google-auth-oauthlib>=1.2
+google-auth-httplib2>=0.2

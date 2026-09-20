@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shorts"
+version = "0.1.0"
+description = "Automated pipeline for animated, satirical fitness YouTube Shorts"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = ["PyYAML>=6.0", "requests>=2.31"]
+
+[project.optional-dependencies]
+llm = ["anthropic>=0.40"]
+images = ["Pillow>=10.0"]
+upload = [
+    "google-api-python-client>=2.100",
+    "google-auth-oauthlib>=1.2",
+    "google-auth-httplib2>=0.2",
+]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+shorts = "shorts.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["shorts*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]

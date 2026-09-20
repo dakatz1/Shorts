@@ -1,0 +1,107 @@
+# Scheduled content generation.
+#
+# This workflow costs money (it calls the script, voice and image APIs) and can
+# publish to YouTube, so it is manual-trigger only by default. Uncomment the
+# `schedule` block once you have watched enough output to trust it.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   ANTHROPIC_API_KEY     script writing
+#   ELEVENLABS_API_KEY    voiceover
+#   ELEVENLABS_VOICE_ID   which voice
+#   REPLICATE_API_TOKEN   animation frames
+#   YOUTUBE_TOKEN_JSON    contents of youtube_token.json, created locally by
+#                         running `shorts upload` once so you can complete the
+#                         browser consent flow on a machine with a browser.
+
+name: Generate shorts
+
+on:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "How many shorts to render"
+        default: "3"
+      publish:
+        description: "Upload to YouTube (otherwise just attach the files here)"
+        type: boolean
+        default: false
+      privacy:
+        description: "YouTube privacy if publishing"
+        type: choice
+        options: [private, unlisted, public]
+        default: private
+
+  # schedule:
+  #   - cron: "0 13 * * *"   # 13:00 UTC daily
+
+concurrency:
+  group: generate-shorts
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg fontconfig fonts-dejavu-core
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # B-roll is not committed to the repo. Restore it from a cache populated
+      # by a prior run, or the workflow falls back to placeholder footage.
+      - name: Restore b-roll library
+        uses: actions/cache@v4
+        with:
+          path: assets/broll
+          key: broll-${{ hashFiles('assets/broll/**') }}
+          restore-keys: broll-
+
+      - name: Render
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+        run: |
+          python -m shorts batch \
+            --count "${{ inputs.count }}" \
+            --set providers.llm=anthropic \
+            --set providers.tts=elevenlabs \
+            --set providers.image=replicate
+
+      - name: Upload artifacts to this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: shorts-${{ github.run_number }}
+          path: |
+            out/**/final.mp4
+            out/**/thumbnail.jpg
+            out/**/script.json
+          retention-days: 14
+
+      - name: Publish to YouTube
+        if: ${{ inputs.publish }}
+        env:
+          YOUTUBE_TOKEN_FILE: youtube_token.json
+        run: |
+          printf '%s' '${{ secrets.YOUTUBE_TOKEN_JSON }}' > youtube_token.json
+          for dir in out/*/; do
+            [ -f "$dir/final.mp4" ] || continue
+            python -m shorts upload "$dir" \
+              --set upload.enabled=true \
+              --set upload.privacy="${{ inputs.privacy }}"
+          done
+          rm -f youtube_token.json

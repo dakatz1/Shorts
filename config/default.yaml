@@ -1,0 +1,110 @@
+# ---------------------------------------------------------------------------
+# Default pipeline configuration.
+# Copy config/channel.example.yaml to config/channel.yaml and override only
+# what you care about — that file is layered on top of this one.
+# ---------------------------------------------------------------------------
+
+# Which implementation backs each stage. "stub" providers need no API keys and
+# are what `make demo` uses, so you can render a real mp4 before paying anyone.
+providers:
+  llm: stub            # stub | anthropic
+  tts: stub            # stub | elevenlabs | say (macOS) | espeak
+  image: stub          # stub | replicate | openai
+
+content:
+  # satire  -> absurd claims + a visible disclaimer + comedic framing (default)
+  # deadpan -> claims presented straight, no disclaimer.
+  #            Read the "Policy risk" section of the README before switching.
+  mode: satire
+  niche: "fitness bro-science"
+  # Escalation ceiling: how unhinged the payoff claim is allowed to get (1-5).
+  absurdity: 4
+  beats: 5                    # narrated lines per short
+  target_seconds: 32          # aim; actual length follows the voiceover
+  disclaimer: "Satire. Not fitness advice. Obviously."
+  banned_words:               # never let the model emit these
+    - "cure"
+    - "cures"
+    - "disease"
+    - "cancer"
+    - "medication"
+    - "diagnosis"
+
+voice:
+  # Delivery direction handed to the TTS provider and baked into the script prompt.
+  style: "urgent, conspiratorial documentary narrator"
+  speed: 1.08
+  # elevenlabs-specific
+  model_id: eleven_multilingual_v2
+  stability: 0.4
+  similarity_boost: 0.75
+
+visual:
+  # The Zach-D-Films-ish look. This string is appended to every image prompt.
+  style_preset: cinematic_3d
+  width: 1080
+  height: 1920
+  fps: 30
+  # How the animation panel and the workout footage share the frame.
+  # split      -> animation on top, workout b-roll on bottom (classic bait layout)
+  # full       -> animation full-bleed, b-roll as a bottom inset strip
+  # broll_only -> skip generated images entirely, workout footage full-bleed
+  layout: split
+  split_ratio: 0.58           # fraction of frame height given to the animation
+  ken_burns: true
+  zoom_per_second: 0.035
+
+captions:
+  enabled: true
+  font: null                  # null -> auto-detect a system font
+  font_size: 68
+  primary_color: "&H00FFFFFF"     # ASS BGR order: white
+  highlight_color: "&H0000E5FF"   # amber highlight on the active word
+  outline: 6
+  shadow: 3
+  # Vertical position as a fraction of frame height (0 = top, 1 = bottom).
+  position: 0.74
+  max_words_per_line: 3
+  uppercase: true
+
+hook:
+  # Big text slammed on screen for the opening beat.
+  enabled: true
+  font_size: 86
+  duration: 2.6
+  position: 0.16
+
+broll:
+  dir: assets/broll
+  # Reuse the same clip at most this often across a batch, when enough files exist.
+  max_reuse: 2
+  # If the b-roll library is empty, synthesise a placeholder so the pipeline
+  # still produces a watchable file instead of crashing.
+  allow_placeholder: true
+
+music:
+  dir: assets/music
+  enabled: true
+  volume_db: -22              # ducked well under the voice
+  allow_placeholder: false
+
+output:
+  dir: out
+  # h264 + aac in an mp4 — what YouTube wants for Shorts.
+  crf: 20
+  preset: medium
+  audio_bitrate: 192k
+  thumbnail: true
+
+upload:
+  enabled: false              # `shorts upload` requires this to be true
+  privacy: private            # private | unlisted | public — start private!
+  category_id: "17"           # Sports
+  made_for_kids: false
+  title_suffix: " #shorts"
+  # Appended to every description.
+  description_footer: |
+
+    #shorts #fitness #gymtok #satire
+
+    Disclaimer: this channel is satire. Nothing here is fitness or medical advice.
