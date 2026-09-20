@@ -1,0 +1,15 @@
+# Workout b-roll, one clip per line. Fetched by `shorts fetch-broll`, which the
+# GitHub Actions workflows run before rendering.
+#
+#   <url>                     -> filename taken from the URL
+#   <url>  squats-01.mp4      -> explicit filename
+#
+# THE FILENAME MATTERS. Clip selection prefers files whose name mentions the
+# exercise in the script, so name them after the movement:
+#   squats-01.mp4  pushups-gym.mp4  deadlifts-closeup.mp4  calves-01.mp4
+#
+# You need the right to use every clip you list here. Direct links to files you
+# own, or to stock footage you have licensed. See README.md.
+#
+# Example (replace with your own):
+# https://example.com/my-footage/squats-01.mp4   squats-01.mp4

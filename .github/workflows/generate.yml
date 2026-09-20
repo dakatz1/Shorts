@@ -1,28 +1,36 @@
-# Scheduled content generation.
+# Step 2 of the phone workflow: render videos and publish them somewhere you
+# can actually watch them on a phone.
 #
-# This workflow costs money (it calls the script, voice and image APIs) and can
-# publish to YouTube, so it is manual-trigger only by default. Uncomment the
-# `schedule` block once you have watched enough output to trust it.
+# Output goes to a GitHub Release, because a Release asset is a direct link that
+# plays in a mobile browser — an Actions artifact is a zip, which is useless on
+# a phone. Optionally also uploads to YouTube as private, which is the nicest
+# review surface of all: the videos just appear in your YouTube app.
 #
-# Required repository secrets (Settings -> Secrets and variables -> Actions):
-#   ANTHROPIC_API_KEY     script writing
-#   ELEVENLABS_API_KEY    voiceover
+# Repository secrets (Settings -> Secrets and variables -> Actions):
+#   ANTHROPIC_API_KEY     script writing        (optional, falls back to offline writer)
+#   ELEVENLABS_API_KEY    voiceover             (optional, falls back to silence)
 #   ELEVENLABS_VOICE_ID   which voice
-#   REPLICATE_API_TOKEN   animation frames
-#   YOUTUBE_TOKEN_JSON    contents of youtube_token.json, created locally by
-#                         running `shorts upload` once so you can complete the
-#                         browser consent flow on a machine with a browser.
+#   REPLICATE_API_TOKEN   animation frames      (optional, falls back to placeholders)
+#   YOUTUBE_TOKEN_JSON    contents of youtube_token.json, from `shorts auth`
 
-name: Generate shorts
+name: 2. Render videos
 
 on:
   workflow_dispatch:
     inputs:
+      scripts:
+        description: "Pitch folder to render, e.g. pitches/7. Leave blank to write fresh scripts."
+        default: ""
       count:
-        description: "How many shorts to render"
+        description: "How many to make when writing fresh scripts"
         default: "3"
+      layout:
+        description: "Frame layout"
+        type: choice
+        options: [split, full, broll_only]
+        default: split
       publish:
-        description: "Upload to YouTube (otherwise just attach the files here)"
+        description: "Also upload to YouTube"
         type: boolean
         default: false
       privacy:
@@ -31,17 +39,21 @@ on:
         options: [private, unlisted, public]
         default: private
 
+  # Uncomment once you trust the output. Renders and publishes unattended.
   # schedule:
   #   - cron: "0 13 * * *"   # 13:00 UTC daily
 
+permissions:
+  contents: write
+
 concurrency:
-  group: generate-shorts
+  group: render-shorts
   cancel-in-progress: false
 
 jobs:
-  generate:
+  render:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -60,14 +72,34 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # B-roll is not committed to the repo. Restore it from a cache populated
-      # by a prior run, or the workflow falls back to placeholder footage.
-      - name: Restore b-roll library
+      - name: Cache b-roll
         uses: actions/cache@v4
         with:
           path: assets/broll
-          key: broll-${{ hashFiles('assets/broll/**') }}
-          restore-keys: broll-
+          key: broll-${{ hashFiles('assets/broll/sources.txt') }}
+
+      - name: Fetch b-roll
+        run: python -m shorts fetch-broll
+
+      - name: Pick providers
+        id: providers
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+        run: |
+          # Each stage independently falls back to its offline stub, so a
+          # partially-configured repo still produces watchable output.
+          LLM=stub;   [ -n "$ANTHROPIC_API_KEY" ]   && LLM=anthropic
+          TTS=stub;   [ -n "$ELEVENLABS_API_KEY" ]  && TTS=elevenlabs
+          IMG=stub;   [ -n "$REPLICATE_API_TOKEN" ] && IMG=replicate
+          echo "llm=$LLM" >> "$GITHUB_OUTPUT"
+          echo "tts=$TTS" >> "$GITHUB_OUTPUT"
+          echo "image=$IMG" >> "$GITHUB_OUTPUT"
+          echo "Providers — script:$LLM voice:$TTS image:$IMG"
+
+      - name: Environment check
+        run: python -m shorts doctor
 
       - name: Render
         env:
@@ -76,32 +108,64 @@ jobs:
           ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
           REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
         run: |
-          python -m shorts batch \
-            --count "${{ inputs.count }}" \
-            --set providers.llm=anthropic \
-            --set providers.tts=elevenlabs \
-            --set providers.image=replicate
+          COMMON=(
+            --set providers.llm=${{ steps.providers.outputs.llm }}
+            --set providers.tts=${{ steps.providers.outputs.tts }}
+            --set providers.image=${{ steps.providers.outputs.image }}
+            --set visual.layout=${{ inputs.layout }}
+          )
+          if [ -n "${{ inputs.scripts }}" ]; then
+            python -m shorts render "${{ inputs.scripts }}" "${COMMON[@]}"
+          else
+            python -m shorts batch --count "${{ inputs.count }}" "${COMMON[@]}"
+          fi
 
-      - name: Upload artifacts to this run
-        uses: actions/upload-artifact@v4
+      - name: Collect the videos
+        id: collect
+        run: |
+          mkdir -p release
+          : > notes.md
+          echo "Rendered by run [${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})." >> notes.md
+          echo "" >> notes.md
+          count=0
+          for dir in out/*/; do
+            [ -f "$dir/final.mp4" ] || continue
+            slug=$(basename "$dir")
+            cp "$dir/final.mp4" "release/$slug.mp4"
+            title=$(python -c "import json,sys;print(json.load(open(sys.argv[1]))['title'])" "$dir/script.json")
+            echo "### $title" >> notes.md
+            echo "" >> notes.md
+            echo "\`$slug.mp4\`" >> notes.md
+            echo "" >> notes.md
+            count=$((count+1))
+          done
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          [ "$count" -gt 0 ] || { echo "nothing rendered"; exit 1; }
+
+      - name: Publish a Release you can watch on your phone
+        uses: softprops/action-gh-release@v2
         with:
-          name: shorts-${{ github.run_number }}
-          path: |
-            out/**/final.mp4
-            out/**/thumbnail.jpg
-            out/**/script.json
-          retention-days: 14
+          tag_name: shorts-${{ github.run_number }}
+          name: Shorts — run ${{ github.run_number }}
+          body_path: notes.md
+          files: release/*.mp4
 
-      - name: Publish to YouTube
+      - name: Upload to YouTube
         if: ${{ inputs.publish }}
         env:
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
           YOUTUBE_TOKEN_FILE: youtube_token.json
         run: |
-          printf '%s' '${{ secrets.YOUTUBE_TOKEN_JSON }}' > youtube_token.json
+          if [ -z "$YOUTUBE_TOKEN_JSON" ]; then
+            echo "::error::YOUTUBE_TOKEN_JSON is not set. Run 'shorts auth' and save the token as a repository secret."
+            exit 1
+          fi
+          pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
+          printf '%s' "$YOUTUBE_TOKEN_JSON" > youtube_token.json
+          trap 'rm -f youtube_token.json' EXIT
           for dir in out/*/; do
             [ -f "$dir/final.mp4" ] || continue
             python -m shorts upload "$dir" \
               --set upload.enabled=true \
               --set upload.privacy="${{ inputs.privacy }}"
           done
-          rm -f youtube_token.json

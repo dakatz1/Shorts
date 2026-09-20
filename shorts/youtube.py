@@ -68,6 +68,62 @@ def authenticate(config: Config):
     return build("youtube", "v3", credentials=creds, cache_discovery=False)
 
 
+def manual_auth(config: Config, redirect_url: str | None = None) -> Path:
+    """Authorise without a local web server, for machines with no browser.
+
+    `run_local_server` needs a loopback listener, which rules out a phone and
+    most cloud shells. This flow instead prints a URL you open anywhere, then
+    takes back the URL you land on — the authorization code is in its query
+    string. Register `https://localhost` as a redirect URI on the OAuth client;
+    the page fails to load, which is fine, the address bar is what we need.
+    """
+    from urllib.parse import parse_qs, urlparse
+
+    secret_path = Path(env("YOUTUBE_CLIENT_SECRET", default="client_secret.json"))
+    token_path = Path(env("YOUTUBE_TOKEN_FILE", default="youtube_token.json"))
+    if not secret_path.exists():
+        raise RuntimeError(
+            f"OAuth client secret not found at {secret_path}. Create one in Google "
+            "Cloud Console (YouTube Data API v3 -> OAuth client -> Web application) "
+            "with https://localhost as an authorised redirect URI."
+        )
+
+    _require_libs()
+    from google_auth_oauthlib.flow import Flow
+
+    flow = Flow.from_client_secrets_file(
+        str(secret_path), scopes=SCOPES, redirect_uri="https://localhost"
+    )
+    auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline")
+
+    if not redirect_url:
+        print("\n1. Open this URL and approve access:\n")
+        print(auth_url)
+        print("\n2. Your browser will fail to load https://localhost — that is expected.")
+        print("3. Copy the WHOLE address from the address bar and paste it below.\n")
+        redirect_url = input("redirect URL: ").strip()
+
+    query = parse_qs(urlparse(redirect_url).query)
+    if "error" in query:
+        raise RuntimeError(f"authorisation was refused: {query['error'][0]}")
+    codes = query.get("code")
+    if not codes:
+        raise RuntimeError(
+            "that URL has no ?code= parameter. Paste the full address you were "
+            "redirected to, not the one you opened."
+        )
+
+    flow.fetch_token(code=codes[0])
+    if not flow.credentials.refresh_token:
+        raise RuntimeError(
+            "Google returned no refresh token. Revoke this app's access at "
+            "https://myaccount.google.com/permissions and authorise again."
+        )
+    token_path.write_text(flow.credentials.to_json(), encoding="utf-8")
+    log.info("wrote %s", token_path)
+    return token_path
+
+
 def build_metadata(script: Script, config: Config) -> dict:
     """Shape the script into a valid videos.insert body."""
     suffix = str(config.get("upload.title_suffix", " #shorts"))

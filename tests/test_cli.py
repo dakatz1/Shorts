@@ -55,5 +55,70 @@ def test_every_subcommand_is_wired():
     parser = build_parser()
     actions = [a for a in parser._actions if a.dest == "command"]
     assert set(actions[0].choices) == {
-        "doctor", "idea", "script", "make", "render", "batch", "upload"
+        "doctor", "idea", "script", "make", "render", "batch", "upload",
+        "pitch", "fetch-broll", "auth",
     }
+
+
+# --- phone-oriented commands ---------------------------------------------
+
+def test_pitch_writes_scripts_without_rendering(tmp_path):
+    from shorts.models import Script
+
+    assert main(["pitch", "-n", "3", "--seed", "4", "--out-dir", str(tmp_path)]) == 0
+    written = sorted(tmp_path.glob("*.json"))
+    assert len(written) == 3
+    assert all(Script.load(p).beats for p in written)
+    assert not list(tmp_path.glob("*.mp4"))   # nothing rendered
+
+
+def test_pitch_markdown_is_readable_on_a_phone(tmp_path):
+    summary = tmp_path / "pitch.md"
+    assert main(["pitch", "-n", "2", "--seed", "5",
+                 "--out-dir", str(tmp_path), "--markdown", str(summary)]) == 0
+    text = summary.read_text()
+    assert text.count("###") == 2
+    assert "> " in text          # beats quoted, so they scan as script lines
+    assert "`01.json" not in text.replace(str(tmp_path), "")  # paths are real
+
+
+def test_expand_scripts_accepts_files_dirs_and_globs(tmp_path):
+    from shorts.cli import _expand_scripts
+
+    (tmp_path / "01.json").write_text("{}")
+    (tmp_path / "02.json").write_text("{}")
+    (tmp_path / "notes.txt").write_text("ignore me")
+
+    assert len(_expand_scripts([tmp_path])) == 2
+    assert len(_expand_scripts([tmp_path / "01.json"])) == 1
+    assert len(_expand_scripts([tmp_path / "notes.txt"])) == 0
+
+
+def test_render_reports_when_nothing_matches(tmp_path, capsys):
+    assert main(["render", str(tmp_path)]) == 1
+    assert "no script.json found" in capsys.readouterr().err
+
+
+def test_fetch_broll_on_the_shipped_template_is_a_noop(capsys):
+    assert main(["fetch-broll"]) == 0
+    assert capsys.readouterr().out.strip() == ""
+
+
+def test_auth_explains_the_missing_client_secret(capsys, monkeypatch):
+    monkeypatch.setenv("YOUTUBE_CLIENT_SECRET", "/nonexistent/client_secret.json")
+    assert main(["auth", "--redirect-url", "https://localhost/?code=x"]) == 1
+    assert "Google Cloud Console" in capsys.readouterr().err
+
+
+def test_auth_rejects_a_url_without_a_code(tmp_path, capsys, monkeypatch):
+    import json
+
+    secret = tmp_path / "client_secret.json"
+    secret.write_text(json.dumps({"web": {
+        "client_id": "id", "client_secret": "secret",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+    }}))
+    monkeypatch.setenv("YOUTUBE_CLIENT_SECRET", str(secret))
+    assert main(["auth", "--redirect-url", "https://localhost/"]) == 1
+    assert "no ?code=" in capsys.readouterr().err

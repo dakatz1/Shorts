@@ -18,6 +18,12 @@ demo:           ## Render one short with zero API keys
 idea:           ## Print 10 premises without rendering anything
 	$(PY) -m shorts idea -n 10
 
+pitch:          ## Write 5 scripts for review, render nothing
+	$(PY) -m shorts pitch -n 5 --out-dir pitches/local --markdown pitches/local.md
+
+broll:          ## Download clips listed in assets/broll/sources.txt
+	$(PY) -m shorts fetch-broll
+
 batch:          ## Render 5 shorts
 	$(PY) -m shorts batch -n 5
 

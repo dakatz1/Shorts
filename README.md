@@ -2,43 +2,145 @@
 
 An automated pipeline that turns a bogus fitness claim into a finished vertical
 video: cinematic-3D-style animation on top, workout footage on the bottom,
-karaoke captions burned in, voiceover mixed, ready to upload to YouTube.
+karaoke captions burned in, voiceover mixed, ready for YouTube.
 
 ```
 idea  ->  script  ->  voiceover  ->  animation frames  ->  render  ->  upload
 ```
 
-Run it with no API keys at all to see the format:
-
-```bash
-make setup
-make demo        # renders out/<slug>/final.mp4
-```
+**It runs on GitHub's servers, not yours.** You drive the whole thing from the
+GitHub mobile app or github.com in a phone browser. Nothing needs to be
+installed locally.
 
 ---
 
-## What it produces
+## The phone loop
 
-A 1080x1920 mp4, typically 25-35 seconds:
+Three taps, in order. Everything happens under the **Actions** tab.
 
-- **Top panel** — generated stills with a Ken Burns move, in a dark, high-contrast,
-  single-key-light style (the Zach-D-Films register: silhouettes, god rays, haze,
-  teal shadows with one warm accent).
-- **Bottom panel** — your workout b-roll, cropped and looped.
-- **Hook** — big text slammed on screen for the first ~2.5 seconds, so the video
-  works muted.
-- **Captions** — word-by-word, with the spoken word tinted.
-- **Disclaimer** — a small persistent line at the bottom (satire mode only).
+### 1. Pitch — write scripts, render nothing
 
-`assets/` ships empty. Until you add workout clips the bottom panel is an obvious
-synthetic placeholder.
+Run **`1. Pitch scripts`**. Pick how many and how unhinged (1-5).
+
+It writes the scripts, commits them to `pitches/<run number>/`, and opens an
+**issue** containing every script in full. That issue is the thing you read on
+your phone — hook, title, every spoken line, formatted to scan on a small
+screen.
+
+Scripts cost cents. Rendering costs real money and quota. So read first.
+
+### 2. Render — turn the good ones into videos
+
+Delete the pitches you don't want (tap the file on github.com, the bin icon,
+commit). Then run **`2. Render videos`** with:
+
+```
+scripts: pitches/7
+```
+
+Leave `scripts` blank to skip the pitch step and write fresh scripts inline.
+
+When it finishes it publishes a **Release**. Release assets are direct links —
+tap one on your phone and the video plays. (Actions *artifacts* are zip files,
+which is why they aren't used here.)
+
+### 3. Publish
+
+Two ways, pick either:
+
+- **Manual** — download the mp4 from the Release, upload with the YouTube app.
+  The Release notes carry the title for each video, ready to copy. No API setup
+  at all. Honestly fine at a few videos a day.
+- **Automatic** — tick `publish` on the render workflow. Needs the one-time
+  OAuth setup below. Leave `privacy: private` and the videos just appear in your
+  YouTube app, where reviewing and flipping them public is a two-tap job.
+
+Once you trust it, uncomment the `schedule:` block in
+`.github/workflows/generate.yml` and it runs daily on its own.
+
+---
+
+## Setup from a phone
+
+### Nothing at all
+
+The workflows run today. Every stage falls back to an offline stub when its API
+key is missing, so you get a real, watchable mp4 with placeholder visuals and a
+silent voice track. Run `2. Render videos` right now and see the format.
+
+### API keys
+
+`Settings -> Secrets and variables -> Actions -> New repository secret`. Add the
+ones you want; each is independent.
+
+| Secret | Buys you | Roughly |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | scripts actually written, not templated | ~$0.02 / short |
+| `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID` | a real voiceover with accurate caption timing | ~$0.05 / short |
+| `REPLICATE_API_TOKEN` | real animation frames instead of placeholders | ~$0.04 / frame |
+
+All in: **$0.25-0.40 per short.** The render workflow logs which providers it
+picked, so you can see what's live.
+
+### Workout footage
+
+The bottom panel is synthetic noise until you supply clips. Two ways, both
+phone-friendly:
+
+**Declare URLs** (keeps the repo small). Edit `assets/broll/sources.txt` on
+github.com:
+
+```
+https://example.com/footage/squats-01.mp4     squats-01.mp4
+https://example.com/footage/pushups-01.mp4    pushups-01.mp4
+```
+
+**Or commit the files.** On github.com in a phone browser: `assets/broll/` ->
+`Add file` -> `Upload files`. Fine for a handful of clips; a large library will
+bloat the repo, so prefer the URL list past a dozen or so.
+
+**Name them after the exercise.** Clip selection prefers filenames that mention
+the script's exercise, so `squats-01.mp4` gets you topical pairing for free.
+
+**You need the right to use every clip.** Unlicensed gym footage and unlicensed
+music are the two things most likely to get a short claimed or muted. See
+`assets/broll/README.md`.
+
+### YouTube upload (optional)
+
+This is the one step that isn't phone-native, because Google's consent flow
+wants a browser session it can hand a code back to.
+
+1. Google Cloud Console (works in a phone browser, painfully): enable **YouTube
+   Data API v3**, create an OAuth client of type **Web application**, add
+   `https://localhost` as an authorised redirect URI, download the JSON.
+2. Run `shorts auth` somewhere with a shell. **Google Cloud Shell**
+   (shell.cloud.google.com) works from a phone browser and is free — clone the
+   repo there, `pip install -r requirements.txt`, then:
+
+   ```bash
+   python -m shorts auth
+   ```
+
+   It prints a URL. Open it, approve, and you land on a `https://localhost/...`
+   page that fails to load — that's expected. Copy the whole address bar and
+   paste it back. You now have `youtube_token.json`.
+3. Copy that file's entire contents into a repository secret named
+   **`YOUTUBE_TOKEN_JSON`**. Treat it like a password.
+
+If that sounds like more trouble than it's worth: it is, at low volume. Use the
+manual upload path instead.
+
+**Quota is the real ceiling.** A default Google Cloud project gets 10,000
+units/day and each upload costs ~1,600 — about **6 uploads per day**, however
+you automate it.
 
 ---
 
 ## Read this before you publish anything
 
-You asked for confidently wrong fitness claims. That is exactly what this builds
-— but *how* they are framed decides whether the channel survives.
+You asked for confidently wrong fitness claims. That is exactly what this
+builds — but *how* they are framed decides whether the channel survives.
 
 **The default is `content.mode: satire`:** absurd claims, comedic framing, and a
 visible on-screen disclaimer. Engagement-wise this loses you nothing. The
@@ -48,122 +150,64 @@ separate organ on a body scan" is funnier and more shareable than a claim that's
 merely wrong.
 
 **`content.mode: deadpan` exists** — claims played straight, no disclaimer — and
-it is one line of config. Understand the tradeoff before flipping it:
+it's a dropdown on the pitch workflow. Understand the tradeoff before using it:
 
 - YouTube's misinformation and spam/deceptive-practices policies cover health
   claims. Enforcement against fitness content is inconsistent, but the downside
-  is not a strike, it's demonetisation or channel termination, which takes the
+  isn't a strike, it's demonetisation or channel termination, which takes the
   whole catalogue with it.
 - Un-flagged false health claims can reach someone who acts on them. The dumber
   the claim the smaller that risk — but "stop training, it's counterproductive"
   lands differently than "your calves will become an organ."
 
 Either way, the script prompt refuses to touch medicine, disease, injury
-treatment, disordered eating, drugs, or supplements a viewer could actually take,
-and `content.banned_words` is enforced on the model's output. Keep those guards
-even in deadpan mode.
-
-**You are also responsible for the footage and music you add.** See
-`assets/broll/README.md` — unlicensed gym clips and unlicensed music are the two
-things most likely to get a short claimed or muted.
+treatment, disordered eating, drugs, or supplements a viewer could actually
+take, and `content.banned_words` is enforced on the model's output. Keep those
+guards even in deadpan mode.
 
 ---
 
-## Setup
+## What it produces
 
-### 1. Dependencies
+A 1080x1920 mp4, typically 25-35 seconds:
 
-```bash
-make setup              # Python packages
-```
-
-ffmpeg does the rendering and is not a Python package:
-
-```bash
-brew install ffmpeg                 # macOS
-sudo apt install ffmpeg             # Debian/Ubuntu
-```
-
-Then check everything:
-
-```bash
-make doctor
-```
-
-It reports ffmpeg, the caption font, your b-roll library, and which API keys each
-configured provider needs.
-
-### 2. Workout footage
-
-Drop vertical workout clips into `assets/broll/`, named after the exercise
-(`squats-01.mp4`, `pushups-gym.mp4`). Selection prefers clips whose filename
-matches the script's exercise, so naming buys you topical pairing for free. See
-`assets/broll/README.md` for sourcing and licensing.
-
-### 3. API keys (optional — the stubs work without them)
-
-```bash
-cp .env.example .env    # then fill in
-```
-
-| Stage | Provider | Key | Roughly |
-|---|---|---|---|
-| Script | `anthropic` | `ANTHROPIC_API_KEY` | ~$0.02 / short |
-| Voice | `elevenlabs` | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` | ~$0.05 / short |
-| Images | `replicate` | `REPLICATE_API_TOKEN` | ~$0.04 / frame, 5-6 frames |
-
-Call it **$0.25-0.40 per short** all in. The `stub` providers cost nothing and
-exercise every other stage, so develop against those.
-
-`.env` is gitignored. So are the YouTube OAuth files.
-
-### 4. Turn the real providers on
-
-```bash
-cp config/channel.example.yaml config/channel.yaml
-```
-
-```yaml
-providers:
-  llm: anthropic
-  tts: elevenlabs
-  image: replicate
-```
-
-Then pass it: `python -m shorts make -c config/channel.yaml`.
+- **Top panel** — generated stills with a Ken Burns move, in a dark,
+  high-contrast, single-key-light style (the Zach-D-Films register: silhouettes,
+  god rays, haze, teal shadows with one warm accent).
+- **Bottom panel** — your workout b-roll, cropped and looped.
+- **Hook** — big text slammed on screen for the first ~2.5 seconds, so the video
+  works muted.
+- **Captions** — word by word, with the spoken word tinted.
+- **Disclaimer** — a small persistent line at the bottom (satire mode only).
 
 ---
 
-## Usage
+## Running it locally
+
+Not required, but faster to iterate on if you do get to a laptop.
 
 ```bash
-python -m shorts doctor                       # environment check
-python -m shorts idea -n 10                   # just premises, no cost
-python -m shorts script --show-prompt         # see the exact model prompts
-python -m shorts script -o draft.json         # write one script
-python -m shorts make                         # idea -> finished mp4
-python -m shorts render out/<slug>/script.json  # re-render an edited script
-python -m shorts batch -n 5                   # five shorts in one go
-python -m shorts upload out/<slug> --dry-run  # show the YouTube metadata
-python -m shorts upload out/<slug>            # actually publish
+make setup                 # Python dependencies
+brew install ffmpeg        # or: sudo apt install ffmpeg
+make doctor                # check tooling, fonts, keys, b-roll
+make demo                  # render one short with no API keys
+```
+
+```bash
+python -m shorts idea -n 10                     # premises, free
+python -m shorts pitch -n 5 --out-dir pitches   # scripts, no render
+python -m shorts script --show-prompt           # the exact model prompts
+python -m shorts make                           # idea -> finished mp4
+python -m shorts render pitches/7               # render a folder of scripts
+python -m shorts batch -n 5
+python -m shorts fetch-broll                    # pull clips from sources.txt
+python -m shorts upload out/<slug> --dry-run    # show the YouTube metadata
 ```
 
 Every command takes `-c/--config` and `--set key=value`:
 
 ```bash
 python -m shorts make --set visual.layout=full --set content.absurdity=5
-python -m shorts batch -n 3 --set content.mode=deadpan
-```
-
-### Editing a script before it renders
-
-The highest-leverage workflow. Write it, read it, fix the line that doesn't land,
-then render:
-
-```bash
-python -m shorts script -o out/draft/script.json
-$EDITOR out/draft/script.json
-python -m shorts render out/draft/script.json
 ```
 
 Generated frames are cached per beat, so re-rendering after a text-only edit
@@ -208,8 +252,8 @@ breaks you can play the intermediate file and see which stage did it.
 
 ## Configuration
 
-`config/default.yaml` is the documented schema. Your `config/channel.yaml` layers
-on top; `--set` layers on top of that. The knobs worth knowing:
+`config/default.yaml` is the documented schema. A `config/channel.yaml` layers
+on top; `--set` and the workflow inputs layer on top of that.
 
 ```yaml
 content:
@@ -220,7 +264,6 @@ content:
 visual:
   layout: split         # split | full | broll_only
   split_ratio: 0.58     # how much height the animation panel gets
-  zoom_per_second: 0.035
 
 captions:
   font: null            # null = auto-detect; or a path to a .ttf
@@ -238,44 +281,15 @@ generation entirely — much cheaper, and useful for testing scripts.
 
 ---
 
-## Uploading
-
-1. Google Cloud Console -> enable **YouTube Data API v3** -> create an OAuth
-   client of type **Desktop app** -> download the JSON.
-2. Point `YOUTUBE_CLIENT_SECRET` at it in `.env`.
-3. `python -m shorts upload out/<slug> --dry-run` to check the metadata.
-4. `python -m shorts upload out/<slug>` — opens a browser once, then caches a
-   refresh token in `youtube_token.json`.
-
-`upload.enabled` defaults to `false` and `upload.privacy` to `private`. Turn them
-up only after you've watched what comes out.
-
-The API's upload quota is the real constraint: a default project gets 10,000
-units/day and each upload costs ~1,600, so **about 6 uploads per day**. Request
-more quota, or upload the rest by hand.
-
----
-
-## Scheduling
-
-`.github/workflows/generate.yml` renders a batch on demand and attaches the
-files to the run. It's `workflow_dispatch`-only by default — uncomment the
-`schedule:` block once you trust the output. It needs your API keys as repository
-secrets, plus `YOUTUBE_TOKEN_JSON` (the contents of the `youtube_token.json` you
-generated locally) if you want it to publish.
-
-Note the runner has no b-roll: the workflow restores `assets/broll` from an
-Actions cache and otherwise falls back to placeholder footage. For real
-scheduled publishing, a small always-on box with the footage on disk and a cron
-entry is simpler and cheaper.
-
----
-
 ## Troubleshooting
 
-**`'ffmpeg' is not installed`** — install it; `make doctor` will confirm.
+**The bottom panel is abstract noise** — no b-roll. See *Workout footage* above.
 
-**`No caption font found`** — drop any `.ttf` at `assets/fonts/caption.ttf`.
+**The video is silent** — no `ELEVENLABS_API_KEY`, so the stub voice is being
+used. The timing is still correct.
+
+**Scripts feel templated** — no `ANTHROPIC_API_KEY`, so the offline writer is
+being used. It's structurally right but deliberately not funny.
 
 **Captions run off the frame** — lower `captions.font_size` or
 `captions.max_words_per_line`.
@@ -283,14 +297,16 @@ entry is simpler and cheaper.
 **Captions drift out of sync** — you're on estimated timings. ElevenLabs returns
 real alignment; the offline engines don't.
 
-**The bottom panel is abstract noise** — `assets/broll/` is empty and you're
-seeing the placeholder.
-
 **The model refused the premise** — lower `content.absurdity`, or edit the idea.
 The error says so explicitly.
 
 **A batch renders 4 of 5** — one failure doesn't kill the batch; the summary
-prints which premise failed and why.
+says which premise failed and why.
+
+**The pitch workflow can't push** — the repo's Actions permissions need write
+access (`Settings -> Actions -> General -> Workflow permissions`).
+
+**`'ffmpeg' is not installed`** — only applies locally; `make doctor` confirms.
 
 ---
 
@@ -302,8 +318,8 @@ make test-fast   # skips the end-to-end renders
 ```
 
 Adding a provider is one file plus one line in `shorts/providers/registry.py` —
-the three protocols are in `shorts/providers/base.py` and nothing in the pipeline
-knows which backend it's talking to.
+the three protocols are in `shorts/providers/base.py` and nothing in the
+pipeline knows which backend it's talking to.
 
 ---
 

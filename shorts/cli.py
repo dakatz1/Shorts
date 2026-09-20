@@ -128,12 +128,113 @@ def cmd_make(args) -> int:
     return 0
 
 
+def _expand_scripts(paths: list[Path]) -> list[Path]:
+    """Accept files, directories, or globs — shells on phones are not a thing."""
+    found: list[Path] = []
+    for path in paths:
+        if path.is_dir():
+            found.extend(sorted(path.glob("*.json")))
+        elif any(ch in str(path) for ch in "*?["):
+            found.extend(sorted(Path().glob(str(path))))
+        else:
+            found.append(path)
+    return [p for p in found if p.suffix == ".json"]
+
+
 def cmd_render(args) -> int:
     config = _load(args)
-    script = Script.load(args.script)
-    workdir = args.workdir or args.script.parent
-    result = produce(script, config, workdir=workdir, reuse=not args.no_reuse)
-    _report(result)
+    scripts = _expand_scripts(args.script)
+    if not scripts:
+        print(f"no script.json found at {', '.join(str(p) for p in args.script)}", file=sys.stderr)
+        return 1
+
+    made, failed = [], []
+    for path in scripts:
+        try:
+            script = Script.load(path)
+        except Exception as exc:
+            failed.append((str(path), f"unreadable: {exc}"))
+            continue
+        # A lone script.json renders in place; a pitch directory gets its own
+        # output folder per script so they don't overwrite each other.
+        workdir = args.workdir
+        if workdir is None:
+            workdir = path.parent if path.name == "script.json" else None
+        try:
+            made.append(produce(script, config, workdir=workdir, reuse=not args.no_reuse))
+        except Exception as exc:
+            log.error("failed to render %s: %s", path, exc)
+            failed.append((str(path), str(exc)))
+
+    for result in made:
+        _report(result)
+    for path, error in failed:
+        print(f"  FAILED  {path} — {error}", file=sys.stderr)
+    return 0 if made and not failed else 1
+
+
+def cmd_pitch(args) -> int:
+    """Write scripts without rendering — cheap, and reviewable on a phone."""
+    config = _load(args)
+    out_dir = args.out_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    generator = IdeaGenerator(absurdity=int(config.get("content.absurdity", 4)), seed=args.seed)
+    written: list[Path] = []
+    for index, idea in enumerate(generator.batch(args.count), start=1):
+        try:
+            script = generate_script(config, idea)
+        except Exception as exc:
+            log.error("skipping %s: %s", idea.claim[:50], exc)
+            continue
+        path = out_dir / f"{index:02d}.json"
+        script.save(path)
+        written.append(path)
+
+    if args.markdown:
+        args.markdown.write_text(_pitch_markdown(written), encoding="utf-8")
+        print(f"wrote {args.markdown}")
+    for path in written:
+        print(path)
+    return 0 if written else 1
+
+
+def _pitch_markdown(paths: list[Path]) -> str:
+    """Render the pitches as Markdown — this is what gets read on a phone."""
+    blocks = ["Reply with the numbers you want rendered.\n"]
+    for path in paths:
+        script = Script.load(path)
+        lines = "\n".join(f"> {beat.text}" for beat in script.beats)
+        blocks.append(
+            f"### {path.stem} — {script.hook}\n\n"
+            f"**{script.title}**\n\n{lines}\n\n"
+            f"<sub>`{path}`</sub>\n"
+        )
+    return "\n---\n\n".join(blocks)
+
+
+def cmd_fetch_broll(args) -> int:
+    from .fetch import fetch_broll
+
+    config = _load(args)
+    clips = fetch_broll(config, force=args.force)
+    for clip in clips:
+        print(clip)
+    return 0
+
+
+def cmd_auth(args) -> int:
+    from .youtube import manual_auth
+
+    config = _load(args)
+    token = manual_auth(config, args.redirect_url)
+    print(f"\nwrote {token}")
+    print(
+        "\nTo let GitHub Actions upload for you, copy the ENTIRE contents of that "
+        "file into a repository secret named YOUTUBE_TOKEN_JSON\n"
+        "(Settings -> Secrets and variables -> Actions -> New repository secret).\n"
+        "Treat it like a password — it grants upload access to your channel."
+    )
     return 0
 
 
@@ -218,12 +319,31 @@ def build_parser() -> argparse.ArgumentParser:
     make.add_argument("--no-reuse", action="store_true", help="regenerate cached frames")
     make.set_defaults(func=cmd_make)
 
-    render = subs.add_parser("render", help="render an existing script.json")
+    render = subs.add_parser("render", help="render one or more existing scripts")
     _common(render)
-    render.add_argument("script", type=Path)
+    render.add_argument("script", type=Path, nargs="+",
+                        help="script.json files, directories of them, or a glob")
     render.add_argument("--workdir", type=Path)
     render.add_argument("--no-reuse", action="store_true")
     render.set_defaults(func=cmd_render)
+
+    pitch = subs.add_parser("pitch", help="write scripts for review without rendering")
+    _common(pitch)
+    pitch.add_argument("-n", "--count", type=int, default=5)
+    pitch.add_argument("--seed", type=int)
+    pitch.add_argument("--out-dir", type=Path, default=Path("pitches"))
+    pitch.add_argument("--markdown", type=Path, help="also write a review-friendly summary")
+    pitch.set_defaults(func=cmd_pitch)
+
+    fetch = subs.add_parser("fetch-broll", help="download clips listed in assets/broll/sources.txt")
+    _common(fetch)
+    fetch.add_argument("--force", action="store_true", help="re-download clips already on disk")
+    fetch.set_defaults(func=cmd_fetch_broll)
+
+    auth = subs.add_parser("auth", help="authorise YouTube uploads without a local browser")
+    _common(auth)
+    auth.add_argument("--redirect-url", help="the URL you were redirected to, if you have it")
+    auth.set_defaults(func=cmd_auth)
 
     batch = subs.add_parser("batch", help="render several shorts in one go")
     _common(batch)

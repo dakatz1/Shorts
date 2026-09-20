@@ -16,8 +16,14 @@ youtube_token.json
 # Generated media & scratch
 out/
 cache/
+release/
+
+# B-roll and music are yours to supply. Declaring them in sources.txt keeps the
+# repo small, but committing clips directly also works (and is the easiest way
+# to add them from a phone) — git only ignores them here if you add them locally.
 assets/broll/*
 !assets/broll/README.md
+!assets/broll/sources.txt
 !assets/broll/.gitkeep
 assets/music/*
 !assets/music/README.md
