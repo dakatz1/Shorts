@@ -161,7 +161,12 @@ def produce(
         log.debug("animation %.2fs vs voice %.2fs", ffprobe_duration(animation), voice.duration)
 
     broll_panel: Path | None = None
-    if layout in {"split", "full", "broll_only"}:
+    # A "full" short is carried by the animation; dropping a placeholder inset
+    # into the corner of it looks worse than having no inset at all. Split and
+    # broll_only genuinely need two panels, so those still get a placeholder.
+    if layout == "full" and not broll_lib.library(config):
+        log.info("no b-roll library — rendering full-frame animation with no inset")
+    elif layout in {"split", "full", "broll_only"}:
         idea = script.idea
         source = broll_lib.pick(
             config,
